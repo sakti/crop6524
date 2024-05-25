@@ -1,5 +1,7 @@
 use clap::Parser;
-use image::GenericImageView;
+use fast_image_resize::images::Image;
+use fast_image_resize::{IntoImageView, PixelType, ResizeOptions, Resizer};
+use image::{ColorType, GenericImageView};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about=None)]
@@ -15,7 +17,7 @@ struct Args {
 fn main() {
     let args = Args::parse();
     dbg!(&args);
-    let mut img = image::open(&args.target).unwrap();
+    let img = image::open(&args.target).unwrap();
     let (width, height) = img.dimensions();
     dbg!(width, height);
 
@@ -37,11 +39,46 @@ fn main() {
     let start_x = (width - target_width) / 2;
     let start_y = (height - target_height) / 2;
 
+    let color_type = match img.pixel_type().unwrap() {
+        PixelType::U8 => ColorType::L8,
+        PixelType::U8x2 => ColorType::La8,
+        PixelType::U8x3 => ColorType::Rgb8,
+        PixelType::U8x4 => ColorType::Rgba8,
+        PixelType::U16 => ColorType::L16,
+        PixelType::U16x2 => ColorType::La16,
+        PixelType::U16x3 => ColorType::Rgb16,
+        PixelType::U16x4 => ColorType::Rgba16,
+        _ => panic!("Unsupported type of pixels"),
+    };
+
     // Crop the image to the target dimensions
-    let cropped_img = img.crop(start_x, start_y, target_width, target_height);
+    // target image
+    let mut dst_image = Image::new(target_width, target_height, img.pixel_type().unwrap());
+
+    // resizer
+    let mut resizer = Resizer::new();
+    resizer
+        .resize(
+            &img,
+            &mut dst_image,
+            &ResizeOptions::new().crop(
+                start_x.into(),
+                start_y.into(),
+                target_width.into(),
+                target_height.into(),
+            ),
+        )
+        .unwrap();
 
     // Save the cropped image as a JPEG file
-    cropped_img.save(args.output).expect("Failed to save image");
+    image::save_buffer(
+        args.output,
+        dst_image.buffer(),
+        dst_image.width(),
+        dst_image.height(),
+        color_type,
+    )
+    .expect("Failed to save image");
 
     println!("Image cropped successfully");
 }
